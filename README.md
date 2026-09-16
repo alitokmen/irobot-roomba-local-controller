@@ -72,24 +72,24 @@ async def run_vacuum():
         async with RoombaClient(IP, BLID, PASSWORD) as robot:
             if cmd == "status":
                 print("Connecting and waiting for live state payload (60s timeout)...")
-                
+
                 timeout_seconds = 60.0
                 poll_interval = 0.2
                 elapsed = 0.0
                 reported = {}
-                
+
                 while elapsed < timeout_seconds:
                     reported = robot.reported
                     if reported and "batPct" in reported:
                         break
                     await asyncio.sleep(poll_interval)
                     elapsed += poll_interval
-                
+
                 if reported and "batPct" in reported:
                     phase = reported.get("cleanMissionStatus", {}).get("phase", "unknown")
                     battery = reported.get("batPct", "unknown")
                     bin_full = reported.get("bin", {}).get("full", False)
-                    
+
                     print("\n=== ROOMBA CURRENT STATUS ===")
                     print(f"  * Mode/Phase: {phase.upper()}")
                     print(f"  * Battery:    {battery}%")
@@ -99,26 +99,25 @@ async def run_vacuum():
                     print("Error: Timed out or received incomplete state data from Roomba.")
 
             elif cmd in ["start", "stop", "pause", "dock"]:
-                # Map the input command to its expected target operational phase(s)
                 TARGET_PHASES = {
                     "start": ["run"],
                     "stop": ["stop", "charge"],
                     "pause": ["stop"],
                     "dock": ["hmPostMsn", "charge"]
                 }
-                
+
                 target_list = TARGET_PHASES[cmd]
                 max_attempts = 3
-                attempt_timeout = 6.0  # seconds to wait for a state change per attempt
-                poll_interval = 0.5    # frequency of status checks
+                retry_interval = 3.0  # Seconds to wait before resending the command packet
+                poll_interval = 0.5   # Frequency of state checks
                 success = False
 
-                print(f"Initiating '{cmd}' command sequence (max {max_attempts} attempts)...")
+                print(f"Initiating '{cmd}' sequence (Will retry packet every {retry_interval}s if ignored)...")
 
                 for attempt in range(1, max_attempts + 1):
-                    print(f" -> Attempt {attempt}/{max_attempts}: Sending '{cmd}' packet...")
-                    
-                    # Send the raw command to the local MQTT broker
+                    print(f" -> Attempt {attempt}/{max_attempts}: Sending '{cmd}' command packet...")
+
+                    # Send the physical command
                     if cmd == "start":
                         await robot.send_command("start")
                     elif cmd == "stop":
@@ -128,11 +127,9 @@ async def run_vacuum():
                     elif cmd == "dock":
                         await robot.send_command("dock")
 
-                    # Validation phase: Poll the state to verify if the machine changed modes
+                    # Inner loop: Wait up to 'retry_interval' seconds for a state change
                     elapsed = 0.0
-                    command_acknowledged = False
-                    
-                    while elapsed < attempt_timeout:
+                    while elapsed < retry_interval:
                         await asyncio.sleep(poll_interval)
                         elapsed += poll_interval
                         
@@ -140,43 +137,40 @@ async def run_vacuum():
                         if not reported:
                             continue
 
-                        # Error codes > 0 or a full bin flag mean it cannot execute physical actions
+                        # Exit immediately if hardware error occurs
                         clean_status = reported.get("cleanMissionStatus", {})
                         error_code = clean_status.get("error", 0)
                         bin_full = reported.get("bin", {}).get("full", False)
                         current_phase = clean_status.get("phase", "unknown")
 
                         if error_code != 0 or (cmd == "start" and bin_full):
-                            print(f"\n[!] Hardware Abort: Robot reported a physical fault.")
+                            print(f"\n[!] Abort: Robot reported a physical fault.")
                             if bin_full:
-                                print("    Reason: Dustbin is FULL and preventing operation.")
+                                print("    Reason: Dustbin is FULL.")
                             if error_code != 0:
-                                print(f"    Reason: Device error code #{error_code} (stuck or wheel drop).")
+                                print(f"    Reason: Device error code #{error_code}.")
                             sys.exit(1)
 
-                        # Check if the target state has been successfully reached
+                        # Success Check: Did it change phase?
                         if current_phase in target_list:
-                            print(f" -> Success! Roomba phase verified as '{current_phase.upper()}'.")
+                            print(f" -> Success! Phase transitioned to '{current_phase.upper()}' after {elapsed}s.")
                             success = True
-                            command_acknowledged = True
                             break
 
-                    if command_acknowledged:
+                    if success:
                         break
                     else:
-                        print(f" -> Warning: Attempt {attempt} timed out without phase transition.")
+                        print(f" -> Robot ignored attempt {attempt}. Preparing retry...")
 
                 if success:
                     print(f"\n=== COMMAND EXECUTION SUCCESSFUL ===")
-                    print(f" Roomba successfully transitioned to: {robot.reported.get('cleanMissionStatus', {}).get('phase', '').upper()}")
-                    print(f"=====================================")
                 else:
-                    print(f"\n[!] Error: Failed to confirm '{cmd}' transition after {max_attempts} attempts.")
+                    print(f"\n[!] Error: Robot ignored command after {max_attempts} attempts.")
                     sys.exit(1)
 
             else:
                 print(f"Error: Unknown command '{cmd}'. Use: start, stop, pause, dock, or status.")
-                
+
     except Exception as e:
         print(f"Error communicating with Roomba: {e}")
 
