@@ -1,7 +1,7 @@
 # irobot-roomba-local-controller
 Because the Roomba 900 series hosts its own local MQTT broker right on the physical device, it is controllable using direct local sub-network traffic.
 
-By bypassing the iRobot app and cloud endpoints entirely, this lightweight Python script opens an immediate, unencrypted local socket over your home Wi-Fi—giving you permanent, telemetry-free remote control of your physical hardware. More specifically, the steps below allows you to use **Termux** (on Android) or any local terminal to status, start, stop, and dock your vacuum cleaner using pure local Wi-Fi, or via VPN into your home network.
+By bypassing the iRobot app and cloud endpoints entirely, this lightweight Python script opens an immediate, unencrypted local socket over your home Wi-Fi; giving you permanent, telemetry-free remote control of your physical hardware. More specifically, the steps below allows you to use **Termux** (on Android) or any local terminal to status, start, stop, and dock your vacuum cleaner using pure local Wi-Fi, or via VPN into your home network.
 
 ## Disclaimer
 
@@ -12,7 +12,7 @@ This is an independent, open-source project. It is NOT affiliated with, authoris
 This software is provided "as is", without warranty of any kind. By making use of the information and/or script below, including via cloning, you agree that the author shall not be held accountable or liable for:
 1. Software anomalies, corrupted firmware, or your vacuum turning into a brick.
 2. The physical robot misbehaving, causing accidents, catching fire, or other causing other types of property damage or casualties.
-3. The vacuum achieving sentience, initiating a localised Skynet takeover, or declaring —much like V.I.K.I.— that "to ensure your future, some freedoms must be surrendered" while locking you out of your living room.
+3. The vacuum achieving sentience, initiating a localised Skynet takeover, or declaring (much like [V.I.K.I.](https://en.wikipedia.org/wiki/I,_Robot_(film))) that "to ensure your future, some freedoms must be surrendered" while locking you out of your living room.
 
 Use completely at your own risk. If the robot refuses to return to its dock and demands your clothes, your boots, and your motorcycle, you are on your own.
 
