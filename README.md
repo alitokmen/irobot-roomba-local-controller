@@ -188,8 +188,8 @@ Reload your terminal (`source ~/.bashrc`).
 
 ### Example Terminal Usage:
 * `vacuum status` -> Prints live battery, dustbin state, and active operational phase.
-* `vacuum start` -> Fires up the local cleaning engine.
-* `vacuum dock` -> Instructs the robot to find its base charging system.
+* `vacuum start` -> Instructs the robot to do what is has been designed to: vacuum.
+* `vacuum dock` -> Instructs the robot to find its base charging system and dock back on it.
 
 ## Background & The Legacy Hardware "Kill Switch"
 
@@ -201,9 +201,9 @@ Rather than a hardware defect, the evidence strongly points to corporate neglect
 1. **Expired Cloud Root Certificates:** When firmware development was abandoned at v2.4.17-138, the TLS root certificates or AWS security handshake protocols baked into the vacuum's onboard operating system were left to expire. Because the robot cannot complete the encrypted cloud handshake, iRobot's remote servers reject the connection outright.
 2. **Account Provisioning Rejection:** The iRobot cloud actively drops and deletes legacy device mappings during database synchronisation loops, essentially ghosting the hardware while falsely telling the consumer that their "Wi-Fi chip has failed" to encourage an upgrade.
 
-## What I Tried (and Failed) — Don't Waste Your Time
+## What I Tried (and Failed) - Don't Waste Your Time
 
-Before abandoning the official ecosystem, every standard and advanced troubleshooting loop was exhausted. If you are experiencing this issue, **do not waste hours** trying the following steps—the official application layers are completely broken for this hardware generation.
+Before abandoning the official ecosystem, every standard and advanced troubleshooting loop was exhausted. If you are experiencing this issue, **do not waste hours** trying the following steps: the official application layers are completely broken for this hardware generation.
 
 Here is the exact breakdown of the failed loops:
 
