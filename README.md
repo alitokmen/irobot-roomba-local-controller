@@ -103,7 +103,7 @@ async def run_vacuum():
                     "start": ["run"],
                     "stop": ["stop", "charge"],
                     "pause": ["stop"],
-                    "dock": ["hmPostMsn", "charge"]
+                    "dock": ["hmPostMsn", "hmusrdock",  "charge"]
                 }
 
                 target_list = TARGET_PHASES[cmd]
