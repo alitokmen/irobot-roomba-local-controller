@@ -70,23 +70,33 @@ PASSWORD = "YOUR_PASSWORD"
 TIMEOUT_SECONDS = 60.0
 POLL_INTERVAL = 0.5
 
+
+async def wait_for_status(robot):
+    """Wait until the Roomba publishes a valid status payload."""
+
+    print("Connecting and waiting for live state payload (60s timeout)...")
+
+    elapsed = 0.0
+
+    while elapsed < TIMEOUT_SECONDS:
+        reported = robot.reported
+
+        if reported and "batPct" in reported:
+            return reported
+
+        await asyncio.sleep(POLL_INTERVAL)
+        elapsed += POLL_INTERVAL
+
+    return None
+
+
 async def run_vacuum():
     try:
         async with RoombaClient(IP, BLID, PASSWORD) as robot:
             if cmd == "status":
-                print("Connecting and waiting for live state payload (60s timeout)...")
+                reported = await wait_for_status(robot)
 
-                elapsed = 0.0
-                reported = {}
-
-                while elapsed < TIMEOUT_SECONDS:
-                    reported = robot.reported
-                    if reported and "batPct" in reported:
-                        break
-                    await asyncio.sleep(POLL_INTERVAL)
-                    elapsed += POLL_INTERVAL
-
-                if reported and "batPct" in reported:
+                if reported:
                     phase = reported.get("cleanMissionStatus", {}).get("phase", "unknown")
                     battery = reported.get("batPct", "unknown")
                     bin_full = reported.get("bin", {}).get("full", False)
@@ -115,19 +125,9 @@ async def run_vacuum():
                 # communicating before we send the command.
                 # ---------------------------------------------------------
 
-                print("Connecting and waiting for live state payload (60s timeout)...")
+                reported = await wait_for_status(robot)
 
-                elapsed = 0.0
-                reported = {}
-
-                while elapsed < TIMEOUT_SECONDS:
-                    reported = robot.reported
-                    if reported and "batPct" in reported:
-                        break
-                    await asyncio.sleep(POLL_INTERVAL)
-                    elapsed += POLL_INTERVAL
-
-                if not reported or "batPct" not in reported:
+                if not reported:
                     print("Error: Timed out waiting for valid Roomba status.")
                     sys.exit(1)
 
@@ -163,7 +163,7 @@ async def run_vacuum():
                 print(f" -> Sending '{cmd}' command...")
 
                 # ---------------------------------------------------------
-                # Send the physical command (once, no retry).
+                # Send the physical command EXACTLY ONCE.
                 # ---------------------------------------------------------
 
                 await robot.send_command(cmd)
@@ -176,7 +176,6 @@ async def run_vacuum():
                 # ---------------------------------------------------------
 
                 elapsed = 0.0
-                success = False
 
                 while elapsed < TIMEOUT_SECONDS:
                     await asyncio.sleep(POLL_INTERVAL)
@@ -220,10 +219,11 @@ async def run_vacuum():
                 sys.exit(1)
 
             else:
-                print(f"Error: Unknown command '{cmd}'. Use: start, stop, pause, dock, or status.")
+                print(f"Error: Unknown command '{cmd}'. Use: start, stop, dock, or status.")
 
     except Exception as e:
         print(f"Error communicating with Roomba: {e}")
+
 
 asyncio.run(run_vacuum())
 ```
