@@ -67,23 +67,24 @@ IP = "YOUR_IP"
 BLID = "YOUR_BLID"
 PASSWORD = "YOUR_PASSWORD"
 
+TIMEOUT_SECONDS = 60.0
+POLL_INTERVAL = 0.5
+
 async def run_vacuum():
     try:
         async with RoombaClient(IP, BLID, PASSWORD) as robot:
             if cmd == "status":
                 print("Connecting and waiting for live state payload (60s timeout)...")
 
-                timeout_seconds = 60.0
-                poll_interval = 0.2
                 elapsed = 0.0
                 reported = {}
 
-                while elapsed < timeout_seconds:
+                while elapsed < TIMEOUT_SECONDS:
                     reported = robot.reported
                     if reported and "batPct" in reported:
                         break
-                    await asyncio.sleep(poll_interval)
-                    elapsed += poll_interval
+                    await asyncio.sleep(POLL_INTERVAL)
+                    elapsed += POLL_INTERVAL
 
                 if reported and "batPct" in reported:
                     phase = reported.get("cleanMissionStatus", {}).get("phase", "unknown")
@@ -103,70 +104,120 @@ async def run_vacuum():
                     "start": ["run"],
                     "stop": ["stop", "charge"],
                     "pause": ["stop"],
-                    "dock": ["hmPostMsn", "hmUsrDock",  "charge"]
+                    "dock": ["hmPostMsn", "hmUsrDock", "charge"]
                 }
 
                 target_list = TARGET_PHASES[cmd]
-                max_attempts = 3
-                retry_interval = 3.0  # Seconds to wait before resending the command packet
-                poll_interval = 0.5   # Frequency of state checks
+
+                # ---------------------------------------------------------
+                # First wait until we have a valid live status.
+                # This establishes that the robot is online and
+                # communicating before we send the command.
+                # ---------------------------------------------------------
+
+                print("Connecting and waiting for live state payload (60s timeout)...")
+
+                elapsed = 0.0
+                reported = {}
+
+                while elapsed < TIMEOUT_SECONDS:
+                    reported = robot.reported
+                    if reported and "batPct" in reported:
+                        break
+                    await asyncio.sleep(POLL_INTERVAL)
+                    elapsed += POLL_INTERVAL
+
+                if not reported or "batPct" not in reported:
+                    print("Error: Timed out waiting for valid Roomba status.")
+                    sys.exit(1)
+
+                # ---------------------------------------------------------
+                # Capture the state BEFORE sending the command.
+                # ---------------------------------------------------------
+
+                clean_status = reported.get("cleanMissionStatus", {})
+                initial_phase = clean_status.get("phase", "unknown")
+                error_code = clean_status.get("error", 0)
+                bin_full = reported.get("bin", {}).get("full", False)
+
+                print("\n=== ROOMBA CURRENT STATUS ===")
+                print(f"  * Mode/Phase: {initial_phase.upper()}")
+                print(f"  * Battery:    {reported.get('batPct', 'unknown')}%")
+                print(f"  * Dustbin:    {'FULL / NEEDS EMPTYING' if bin_full else 'OK'}")
+                print(f"  * Error:      {error_code}")
+                print("=================================")
+
+                # Check for a hardware error before sending anything.
+                if error_code != 0 or (cmd == "start" and bin_full):
+                    print("\n[!] Abort: Robot reported a physical fault.")
+
+                    if bin_full:
+                        print("    Reason: Dustbin is FULL.")
+
+                    if error_code != 0:
+                        print(f"    Reason: Device error code #{error_code}.")
+
+                    sys.exit(1)
+
+                print(f"\n -> Current phase: {initial_phase.upper()}")
+                print(f" -> Sending '{cmd}' command...")
+
+                # ---------------------------------------------------------
+                # Send the physical command (once, no retry).
+                # ---------------------------------------------------------
+
+                await robot.send_command(cmd)
+
+                print(" -> Command sent. Waiting for state transition...")
+
+                # ---------------------------------------------------------
+                # Now wait for the robot to transition away from the
+                # state we observed BEFORE sending the command.
+                # ---------------------------------------------------------
+
+                elapsed = 0.0
                 success = False
 
-                print(f"Initiating '{cmd}' sequence (Will retry packet every {retry_interval}s if ignored)...")
+                while elapsed < TIMEOUT_SECONDS:
+                    await asyncio.sleep(POLL_INTERVAL)
+                    elapsed += POLL_INTERVAL
 
-                for attempt in range(1, max_attempts + 1):
-                    print(f" -> Attempt {attempt}/{max_attempts}: Sending '{cmd}' command packet...")
+                    reported = robot.reported
 
-                    # Send the physical command
-                    if cmd == "start":
-                        await robot.send_command("start")
-                    elif cmd == "stop":
-                        await robot.send_command("stop")
-                    elif cmd == "pause":
-                        await robot.send_command("pause")
-                    elif cmd == "dock":
-                        await robot.send_command("dock")
+                    if not reported:
+                        continue
 
-                    # Inner loop: Wait up to 'retry_interval' seconds for a state change
-                    elapsed = 0.0
-                    while elapsed < retry_interval:
-                        await asyncio.sleep(poll_interval)
-                        elapsed += poll_interval
-                        
-                        reported = robot.reported
-                        if not reported:
-                            continue
+                    clean_status = reported.get("cleanMissionStatus", {})
+                    current_phase = clean_status.get("phase", "unknown")
+                    error_code = clean_status.get("error", 0)
+                    bin_full = reported.get("bin", {}).get("full", False)
 
-                        # Exit immediately if hardware error occurs
-                        clean_status = reported.get("cleanMissionStatus", {})
-                        error_code = clean_status.get("error", 0)
-                        bin_full = reported.get("bin", {}).get("full", False)
-                        current_phase = clean_status.get("phase", "unknown")
+                    if error_code != 0:
+                        print(f"\n[!] Abort: Device error code #{error_code}.")
+                        sys.exit(1)
 
-                        if error_code != 0 or (cmd == "start" and bin_full):
-                            print(f"\n[!] Abort: Robot reported a physical fault.")
-                            if bin_full:
-                                print("    Reason: Dustbin is FULL.")
-                            if error_code != 0:
-                                print(f"    Reason: Device error code #{error_code}.")
-                            sys.exit(1)
+                    if cmd == "start" and bin_full:
+                        print("\n[!] Abort: Dustbin is FULL.")
+                        sys.exit(1)
 
-                        # Success Check: Did it change phase?
-                        if current_phase in target_list:
-                            print(f" -> Success! Phase transitioned to '{current_phase.upper()}' after {elapsed}s.")
-                            success = True
-                            break
+                    if (
+                        current_phase in target_list
+                        and current_phase != initial_phase
+                    ):
+                        print(
+                            f" -> Success! Phase transitioned "
+                            f"'{initial_phase.upper()}' -> "
+                            f"'{current_phase.upper()}' "
+                            f"after {elapsed:.1f}s."
+                        )
+                        print("\n=== COMMAND EXECUTION SUCCESSFUL ===")
+                        return
 
-                    if success:
-                        break
-                    else:
-                        print(f" -> Robot ignored attempt {attempt}. Preparing retry...")
-
-                if success:
-                    print(f"\n=== COMMAND EXECUTION SUCCESSFUL ===")
-                else:
-                    print(f"\n[!] Error: Robot ignored command after {max_attempts} attempts.")
-                    sys.exit(1)
+                print(
+                    f"\n[!] Error: Robot did not transition from "
+                    f"'{initial_phase}' within {TIMEOUT_SECONDS:.0f}s."
+                )
+                sys.exit(1)
 
             else:
                 print(f"Error: Unknown command '{cmd}'. Use: start, stop, pause, dock, or status.")
